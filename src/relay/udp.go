@@ -1,88 +1,71 @@
 package relay
 
-// import (
-//     "fmt"
-//     "net"
-// )
-
-// const (
-//     MaxPacketLength = 4096
-// )
-
-// func UdpListen(address string) {
-//     fmt.Println("udp listening on:", address)
-
-//     listener, err = net.ListenUDP("udp", address)
-//     if err != nil {
-//         fmt.Println("couldn't listen on udp:", err.Error())
-//         return
-//     }
-
-//     defer listener.Close()
-
-//     buffer := make([]byte, BufferLength)
-//     for {
-//         bytes, from, error = listener.ReadFrom(buffer)
-//         if err != nil {
-//             fmt.Println("couldn't read from listener:", err.Error())
-//             continue
-//         }
-
-        
-
-//     }
-// }
-
-// func udpGrabSession(conn net.Conn) *SessionDescription {
-//     buffer := make([]byte, SecretLength)
-
-//     bytes, err := conn.Read(buffer)
-    
-//     if err != nil {
-//         fmt.Println("couldn't read secret:", err.Error())
-//         return nil
-//     }
-
-//     if bytes != SecretLength {
-//         fmt.Printf("expected first udp segment to a secret (%d bytes). instead, received %d bytes.\n")
-//         return nil
-//     }
-
-//     key := string(buffer)
-//     session, exists := udpSessions[key]
-//     if exists {
-//         delete(tcpSessions, key)
-//     }
-
-//     return session
-// }
-// func udpStreamCopy(from net.Conn, to net.Conn) {
-//     buffer := make([]byte, 4096)
-
-//     defer from.Close()
-//     defer to.Close()
+import (
+    "fmt"
+    "net"
+    "time"
+)
 
 
-//     for {
-//         from.SetReadDeadline(time.Now().Add(NetworkTimeoutSeconds * time.Second))
+const (
+    MaxPacketLength = 4096
+)
 
-//         total, err := from.Read(buffer)
-//         if (err != nil) {
-//             fmt.Println("udp stream read failed:", err.Error())
-//             return
-//         }
+func UdpListen(address string) {
+    fmt.Println("udp listening on:", address)
 
-//         written := 0
-//         for written < total {
-//             to.SetWriteDeadline(time.Now().Add(NetworkTimeoutSeconds * time.Second))
+    // ip_address <-> ip_address
+    associations := make(map[net.UDPAddr]net.UDPAddr)
 
-//             bytes, err := to.Write(buffer[written:total])
-//             if (err != nil) {
-//                 fmt.Println("udp stream wriite failed:", err.Error())
-//                 return
-//             }
+    listenAddress, error := net.ResolveUDPAddr("udp", address)
+    if error != nil {
+        fmt.Println("couldn't parse address", address, "-", error.Error())
+    }
 
-//             written += bytes
-//         }
-//     }
-// }
+    listener, error := net.ListenUDP("udp", listenAddress)
+    if error != nil {
+        fmt.Println("couldn't listen on udp:", error.Error())
+        return
+    }
+
+    defer listener.Close()
+
+    buffer := make([]byte, BufferLength)
+    for {
+        bytes, from, error := listener.ReadFromUDP(buffer)
+        if error != nil {
+            fmt.Println("couldn't read from listener:", error.Error())
+            continue
+        }
+
+        to, hasAssociation := associations[from]
+        if hasAssociation {
+            // todo: add last write time
+            listener.SetWriteDeadline(time.Now().Add(WriteNetworkTimeout))
+            go listener.WriteToUDP(buffer[:bytes], to)
+        } else if bytes == SecretLength {
+            fmt.Println(from, "- existing association, but received a secret")
+            
+            secret := string(buffer)
+            session, exists := udpSessions[secret]
+            
+            if exists {
+                fmt.Println(from, "- matched session", secret)
+                destination, error := net.ResolveUDPAddr("udp", session.Destination)
+                if error != nil {
+                    fmt.Println("couldn't parse udp destination address", session.Destination, "-", error.Error())
+                    continue
+                }
+
+                associations[from] = destination
+                associations[destination] = from
+
+                // echo back the secret
+                listener.SetWriteDeadline(time.Now().Add(WriteNetworkTimeout))
+                go listener.WriteToUDP(buffer[:bytes], from)
+            } else {
+                fmt.Println(from, "- no session found for this address", secret)
+            }
+        }
+    }
+}

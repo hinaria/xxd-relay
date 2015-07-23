@@ -24,6 +24,6 @@ func sleep() {
 func main() {
     go relay.HttpControlListen(HttpListenAddress)
     go relay.TcpListen(TcpListenAddress)
-    // go relay.UdpListen(UdpListenAddress)
+    go relay.UdpListen(UdpListenAddress)
     sleep()
 }

@@ -2,7 +2,7 @@ package relay
 
 type SessionDescription struct {
     Secret string
-    DestinationAddress string
+    Destination string
 }
 
 var udpSessions = make(map[string]SessionDescription)

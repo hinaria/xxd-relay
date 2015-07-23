@@ -47,9 +47,9 @@ func tcp(client net.Conn) {
         return
     }
     
-    fmt.Println(remote, "- authenticated. relaying to", session.DestinationAddress)
+    fmt.Println(remote, "- authenticated. relaying to", session.Destination)
 
-    server, err := net.Dial("tcp", session.DestinationAddress)
+    server, err := net.Dial("tcp", session.Destination)
     if err != nil {
         fmt.Println(remote, "- couldn't connect to remote server:", err.Error())
         client.Close()
