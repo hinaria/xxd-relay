@@ -11,8 +11,8 @@ const (
 )
 
 var (
-    ReadNetworkTimeout = 10 * time.Minute
-    WriteNetworkTimeout = 10 * time.Second
+    TcpReadNetworkTimeout = 10 * time.Minute
+    TcpWriteNetworkTimeout = 10 * time.Second
 )
 
 func TcpListen(address string) {
@@ -77,11 +77,15 @@ func tcpGrabSession(connection net.Conn) *SessionDescription {
         fmt.Printf("%s - expected first tcp segment to a secret (%d bytes). instead, received %d bytes.\n", remote, SecretLength, bytes)
         return nil
     }
+
     key := string(buffer)
-    session, exists := tcpSessions[key]
     
-    if exists {
-        delete(tcpSessions, key)
+    tcpSessionsLock.Lock()
+    session, exists := tcpSessions[key]
+    if exists { delete(tcpSessions, key) }
+    tcpSessionsLock.Unlock()
+
+    if exists { 
         return &session
     }
 
@@ -95,7 +99,7 @@ func tcpStreamCopy(from net.Conn, to net.Conn) {
     defer to.Close()
 
     for {
-        from.SetReadDeadline(time.Now().Add(ReadNetworkTimeout))
+        from.SetReadDeadline(time.Now().Add(TcpReadNetworkTimeout))
 
         total, err := from.Read(buffer)
         if (err != nil) {
@@ -105,7 +109,7 @@ func tcpStreamCopy(from net.Conn, to net.Conn) {
 
         written := 0
         for written < total {
-            to.SetWriteDeadline(time.Now().Add(WriteNetworkTimeout))
+            to.SetWriteDeadline(time.Now().Add(TcpWriteNetworkTimeout))
 
             bytes, err := to.Write(buffer[written:total])
             if (err != nil) {

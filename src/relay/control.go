@@ -2,6 +2,7 @@ package relay
 
 import (
     "fmt"
+    "sync"
     "net/http"
     "encoding/json"
     "encoding/base64"
@@ -29,14 +30,14 @@ func HttpControlListen(address string) {
     http.ListenAndServe(address, nil)
 }
 
-func getSessionsForProtocol(protocol int) map[string]SessionDescription {
+func getSessionsForProtocol(protocol int) (map[string]SessionDescription, *sync.Mutex) {
     switch protocol {
         case ProtocolUdp:
-            return udpSessions
+            return udpSessions, &udpSessionsLock
         case ProtocolTcp:
-            return tcpSessions
+            return tcpSessions, &tcpSessionsLock
         default:
-            return nil
+            return nil, nil
     }
 }
 
@@ -50,15 +51,15 @@ func handle(writer http.ResponseWriter, request *http.Request) {
 
     var params HttpControlRequest
     decoder := json.NewDecoder(request.Body)
-    error := decoder.Decode(&params)
+    err := decoder.Decode(&params)
 
-    if error != nil {
+    if err != nil {
         http.Error(writer, "failed to decode json payload", 400)
         return
     }
 
-    secretData, error := base64.StdEncoding.DecodeString(params.Base64Secret)
-    if error != nil {
+    secretData, err := base64.StdEncoding.DecodeString(params.Base64Secret)
+    if err != nil {
         http.Error(writer, "invalid secret encoding", 400)
         return
     }
@@ -68,7 +69,7 @@ func handle(writer http.ResponseWriter, request *http.Request) {
         return
     }
 
-    sessions := getSessionsForProtocol(params.Protocol)
+    sessions, sessionsLock := getSessionsForProtocol(params.Protocol)
     if sessions == nil {
         http.Error(writer, "invalid protocol", 400)
         return   
@@ -76,6 +77,7 @@ func handle(writer http.ResponseWriter, request *http.Request) {
 
     secret := string(secretData)
 
+    sessionsLock.Lock()
     switch params.Action {
         case ActionAdd:
             fmt.Println("adding route to", params.Destination, "with secret", secret)
@@ -86,6 +88,7 @@ func handle(writer http.ResponseWriter, request *http.Request) {
         default:
             http.Error(writer, "invalid action", 400)
     }
+    sessionsLock.Unlock()
 
     fmt.Fprintln(writer, `{ "status": "foxies are awesome :3" }`)
 }  
