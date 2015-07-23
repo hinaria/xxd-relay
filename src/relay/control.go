@@ -3,6 +3,7 @@ package relay
 import (
     "fmt"
     "sync"
+    "net"
     "net/http"
     "encoding/json"
     "encoding/base64"
@@ -22,6 +23,8 @@ type HttpControlRequest struct {
     Protocol int        `json:"protocol"`
     Action int          `json:"action"`
 }
+
+var success = []byte { 123, 32, 34, 115, 116, 97, 116, 117, 115, 34, 58, 32, 34, 102, 111, 120, 105, 101, 115, 32, 97, 114, 101, 32, 97, 119, 101, 115, 111, 109, 101, 32, 58, 51, 34, 32, 125 }
 
 func HttpControlListen(address string) {
     fmt.Println("http listening on:", address)
@@ -75,13 +78,19 @@ func handle(writer http.ResponseWriter, request *http.Request) {
         return   
     }
 
+    addr, err := net.ResolveTCPAddr("tcp", params.Destination)
+    if err != nil {
+        http.Error(writer, "invalid destination", 400)
+        return   
+    }
+
     secret := string(secretData)
 
     sessionsLock.Lock()
     switch params.Action {
         case ActionAdd:
             fmt.Println("adding route to", params.Destination, "with secret", secret)
-            sessions[secret] = SessionDescription { secret, params.Destination }
+            sessions[secret] = SessionDescription { secret, addr.String() }
         case ActionRemove:
             fmt.Println("removing route with the secret", secret)
             delete(sessions, secret)
@@ -90,5 +99,7 @@ func handle(writer http.ResponseWriter, request *http.Request) {
     }
     sessionsLock.Unlock()
 
-    fmt.Fprintln(writer, `{ "status": "foxies are awesome :3" }`)
-}  
+    header := writer.Header()
+    header.Set("Content-Type", "application/json")
+    writer.Write(success)
+}
