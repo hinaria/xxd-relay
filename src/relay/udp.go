@@ -1,10 +1,10 @@
 package relay
 
 import (
-"fmt"
-"net"
-"time"
-"sync"
+    "fmt"
+    "net"
+    "sync"
+    "time"
 )
 
 type LiveSession struct {
@@ -68,12 +68,12 @@ func invalidator() {
         previous := len(_sessions)
         count := 0
         for i, session := range _sessions {
-            if (time.Since(session.Created) < UdpAssociationDuration) {
+            if time.Since(session.Created) < UdpAssociationDuration {
                 _sessions[count] = session
                 count++
             }
 
-            if (i % 1000 == 0) {
+            if i % 1000 == 0 {
                 time.Sleep(10 * time.Millisecond)
             }
         }
@@ -118,15 +118,15 @@ func listener(address string) {
 
         if hasAssociation {
             listener.SetWriteDeadline(time.Now().Add(UdpWriteNetworkTimeout))
-            go listener.WriteToUDP(buffer[:bytes], &to)
+            listener.WriteToUDP(buffer[:bytes], &to)
         } else if bytes == SecretLength {
             fmt.Println(from, "- no existing association, but received a potential secret")
-            
+
             secret := string(buffer[:bytes])
             udpSessionsLock.Lock()
             session, exists := udpSessions[secret]
             udpSessionsLock.Unlock()
-            
+
             if exists {
                 fmt.Println(from, "- secret matched pending session")
                 to, err := net.ResolveUDPAddr("udp", session.Destination)
@@ -144,8 +144,10 @@ func listener(address string) {
                 associationsLock.Unlock()
 
                 sessionsLock.Lock()
-                sessions = append(sessions, LiveSession { fromString, toString, time.Now() })
+                sessions = append(sessions, LiveSession{fromString, toString, time.Now()})
                 sessionsLock.Unlock()
+
+                fmt.Println(from, "- session authenticated. now relaying packets with", toString)
 
                 // echo back the secret
                 listener.SetWriteDeadline(time.Now().Add(UdpWriteNetworkTimeout))
