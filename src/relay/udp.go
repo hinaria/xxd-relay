@@ -36,6 +36,8 @@ var (
 
     associationsLock = sync.Mutex{}
     sessionsLock = sync.Mutex{}
+
+    noUdpSession = []byte{125}
 )
 
 func UdpListen(address string) {
@@ -148,15 +150,13 @@ func listener(address string) {
                 sessionsLock.Unlock()
 
                 fmt.Println(from, "- session authenticated. now relaying packets with", toString)
-
-                // echo back the secret
-                listener.SetWriteDeadline(time.Now().Add(UdpWriteNetworkTimeout))
-                go listener.WriteToUDP(buffer[:bytes], from)
             } else {
-                fmt.Println(from, "- active session found for this address")
+                fmt.Println(from, "- potential secret did not match any pending sessions. no active session found for this address")
+                listener.WriteToUDP(noUdpSession, from)
             }
         } else {
-            fmt.Println(from, "- active session found for this address")
+            fmt.Println(from, "- no active session found for this address")
+            listener.WriteToUDP(noUdpSession, from)
         }
     }
 }
