@@ -1,5 +1,5 @@
 package relay
 
 const (
-    SecretLength = 32
+	SecretLength = 32
 )

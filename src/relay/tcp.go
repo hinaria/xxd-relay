@@ -1,123 +1,125 @@
 package relay
 
 import (
-    "fmt"
-    "net"
-    "time"
+	"fmt"
+	"net"
+	"time"
 )
 
 const (
-    BufferLength = 4096
+	BufferLength = 4096
 )
 
 var (
-    TcpReadNetworkTimeout = 10 * time.Minute
-    TcpWriteNetworkTimeout = 10 * time.Second
+	TcpReadNetworkTimeout  = 10 * time.Minute
+	TcpWriteNetworkTimeout = 10 * time.Second
 )
 
 func TcpListen(address string) {
-    fmt.Println("tcp listening on:", address)
+	fmt.Println("tcp listening on:", address)
 
-    listener, err := net.Listen("tcp", address)
-    if err != nil {
-        fmt.Println("couldn't listen on tcp:", err.Error())
-        return
-    }
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		fmt.Println("couldn't listen on tcp:", err.Error())
+		return
+	}
 
-    defer listener.Close()
+	defer listener.Close()
 
-    for {
-        connection, err := listener.Accept()
-        if err != nil {
-            fmt.Println("couldn't accept incoming tcp connection:", err.Error())
-            return
-        }
+	for {
+		connection, err := listener.Accept()
+		if err != nil {
+			fmt.Println("couldn't accept incoming tcp connection:", err.Error())
+			return
+		}
 
-        go tcp(connection)
-    }
+		go tcp(connection)
+	}
 }
 
 func tcp(client net.Conn) {
-    remote := client.RemoteAddr()
+	remote := client.RemoteAddr()
 
-    session := tcpGrabSession(client)
-    if session == nil {
-        fmt.Println(remote, "- client presented invalid secret")
-        client.Close()
-        return
-    }
-    
-    fmt.Println(remote, "- authenticated. relaying to", session.Destination)
+	session := tcpGrabSession(client)
+	if session == nil {
+		fmt.Println(remote, "- client presented invalid secret")
+		client.Close()
+		return
+	}
 
-    server, err := net.Dial("tcp", session.Destination)
-    if err != nil {
-        fmt.Println(remote, "- couldn't connect to remote server:", err.Error())
-        client.Close()
-        return
-    }
+	fmt.Println(remote, "- authenticated. relaying to", session.Destination)
 
-    fmt.Println(remote, "- connected to both parties. beginning relay.")
+	server, err := net.Dial("tcp", session.Destination)
+	if err != nil {
+		fmt.Println(remote, "- couldn't connect to remote server:", err.Error())
+		client.Close()
+		return
+	}
 
-    go tcpStreamCopy(client, server)
-    go tcpStreamCopy(server, client)
+	fmt.Println(remote, "- connected to both parties. beginning relay.")
+
+	go tcpStreamCopy(client, server)
+	go tcpStreamCopy(server, client)
 }
 
 func tcpGrabSession(connection net.Conn) *SessionDescription {
-    buffer := make([]byte, SecretLength)
-    remote := connection.RemoteAddr()
+	buffer := make([]byte, SecretLength)
+	remote := connection.RemoteAddr()
 
-    bytes, err := connection.Read(buffer)
-    
-    if err != nil {
-        fmt.Println(remote, "- couldn't read secret:", err.Error())
-        return nil
-    }
+	bytes, err := connection.Read(buffer)
 
-    if bytes != SecretLength {
-        fmt.Printf("%s - expected first tcp segment to a secret (%d bytes). instead, received %d bytes.\n", remote, SecretLength, bytes)
-        return nil
-    }
+	if err != nil {
+		fmt.Println(remote, "- couldn't read secret:", err.Error())
+		return nil
+	}
 
-    key := string(buffer)
-    
-    tcpSessionsLock.Lock()
-    session, exists := tcpSessions[key]
-    if exists { delete(tcpSessions, key) }
-    tcpSessionsLock.Unlock()
+	if bytes != SecretLength {
+		fmt.Printf("%s - expected first tcp segment to a secret (%d bytes). instead, received %d bytes.\n", remote, SecretLength, bytes)
+		return nil
+	}
 
-    if exists { 
-        return &session
-    }
+	key := string(buffer)
 
-    return nil
+	tcpSessionsLock.Lock()
+	session, exists := tcpSessions[key]
+	if exists {
+		delete(tcpSessions, key)
+	}
+	tcpSessionsLock.Unlock()
+
+	if exists {
+		return &session
+	}
+
+	return nil
 }
 
 func tcpStreamCopy(from net.Conn, to net.Conn) {
-    buffer := make([]byte, BufferLength)
+	buffer := make([]byte, BufferLength)
 
-    defer from.Close()
-    defer to.Close()
+	defer from.Close()
+	defer to.Close()
 
-    for {
-        from.SetReadDeadline(time.Now().Add(TcpReadNetworkTimeout))
+	for {
+		from.SetReadDeadline(time.Now().Add(TcpReadNetworkTimeout))
 
-        total, err := from.Read(buffer)
-        if (err != nil) {
-            fmt.Println(from.RemoteAddr(), "<->", to.RemoteAddr(), "- tcp stream read failed:", err.Error())
-            return
-        }
+		total, err := from.Read(buffer)
+		if err != nil {
+			fmt.Println(from.RemoteAddr(), "<->", to.RemoteAddr(), "- tcp stream read failed:", err.Error())
+			return
+		}
 
-        written := 0
-        for written < total {
-            to.SetWriteDeadline(time.Now().Add(TcpWriteNetworkTimeout))
+		written := 0
+		for written < total {
+			to.SetWriteDeadline(time.Now().Add(TcpWriteNetworkTimeout))
 
-            bytes, err := to.Write(buffer[written:total])
-            if (err != nil) {
-                fmt.Println(to.RemoteAddr(), "<->", from.RemoteAddr(), "- tcp stream write failed:", err.Error())
-                return
-            }
+			bytes, err := to.Write(buffer[written:total])
+			if err != nil {
+				fmt.Println(to.RemoteAddr(), "<->", from.RemoteAddr(), "- tcp stream write failed:", err.Error())
+				return
+			}
 
-            written += bytes
-        }
-    }
+			written += bytes
+		}
+	}
 }
