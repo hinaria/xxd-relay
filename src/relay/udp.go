@@ -23,7 +23,7 @@ var (
 	UdpReadNetworkTimeout  = 10 * time.Second
 	UdpWriteNetworkTimeout = 10 * time.Second
 
-	UdpAssociationDuration = time.Duration(time.Hour)
+	UdpAssociationDuration = time.Duration(2 * time.Hour)
 
 	// ip_address string <-> ip_address UDPAddr
 	associations = make(map[string]net.UDPAddr, InitialSessionCapacity)
