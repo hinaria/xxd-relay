@@ -80,7 +80,7 @@ func invalidator() {
 			}
 		}
 
-		fmt.Println("trimmed session list. we now have", count, "sessions. previously", previous)
+		fmt.Println("trimmed udp session list. we now have", count, "sessions. previously", previous)
 		_sessions = _sessions[:count]
 	}
 }
