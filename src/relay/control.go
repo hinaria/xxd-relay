@@ -3,7 +3,6 @@ package relay
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net"
 	"net/http"
 	"sync"
@@ -27,7 +26,7 @@ type HttpControlRequest struct {
 var success = []byte{123, 32, 34, 115, 116, 97, 116, 117, 115, 34, 58, 32, 34, 102, 111, 120, 105, 101, 115, 32, 97, 114, 101, 32, 97, 119, 101, 115, 111, 109, 101, 32, 58, 51, 34, 32, 125}
 
 func HttpControlListen(address string) {
-	fmt.Println("http listening on:", address)
+	println("http listening on:", address)
 
 	http.HandleFunc("/route", handle)
 	http.ListenAndServe(address, nil)
@@ -45,7 +44,7 @@ func getSessionsForProtocol(protocol int) (map[string]SessionDescription, *sync.
 }
 
 func handle(writer http.ResponseWriter, request *http.Request) {
-	fmt.Println("http:", request.URL)
+	println("http:", request.URL)
 
 	if request.Body == nil {
 		http.Error(writer, "no content body", 400)
@@ -89,10 +88,10 @@ func handle(writer http.ResponseWriter, request *http.Request) {
 	sessionsLock.Lock()
 	switch params.Action {
 	case ActionAdd:
-		fmt.Println("adding route to", params.Destination, "with secret", secret)
+		println("adding route to", params.Destination, "with secret", secret)
 		sessions[secret] = SessionDescription{secret, addr.String()}
 	case ActionRemove:
-		fmt.Println("removing route with the secret", secret)
+		println("removing route with the secret", secret)
 		delete(sessions, secret)
 	default:
 		http.Error(writer, "invalid action", 400)

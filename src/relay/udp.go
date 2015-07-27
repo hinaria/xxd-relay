@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -48,7 +47,7 @@ func UdpListen(address string) {
 func invalidator() {
 	const TrimDurationMinutes = 10
 
-	fmt.Println("beginning udp route invaldation loop")
+	println("beginning udp route invaldation loop")
 
 	for {
 		// wait until `TrimDurationMinutes` before trimming sessions, but
@@ -58,7 +57,7 @@ func invalidator() {
 
 			sessionsLock.Lock()
 			if len(sessions) > 0 {
-				fmt.Println("moving", len(sessions), "to the invalidation queue")
+				println("moving", len(sessions), "to the invalidation queue")
 				_sessions = append(_sessions, sessions...)
 				sessions = sessions[:0]
 			}
@@ -80,22 +79,22 @@ func invalidator() {
 			}
 		}
 
-		fmt.Println("trimmed udp session list. we now have", count, "sessions. previously", previous)
+		println("trimmed udp session list. we now have", count, "sessions. previously", previous)
 		_sessions = _sessions[:count]
 	}
 }
 
 func listener(address string) {
-	fmt.Println("udp listening on:", address)
+	println("udp listening on:", address)
 
 	listenAddress, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
-		fmt.Println("couldn't parse address", address, "-", err.Error())
+		println("couldn't parse address", address, "-", err.Error())
 	}
 
 	listener, err := net.ListenUDP("udp", listenAddress)
 	if err != nil {
-		fmt.Println("couldn't listen on udp:", err.Error())
+		println("couldn't listen on udp:", err.Error())
 		return
 	}
 
@@ -110,7 +109,7 @@ func listener(address string) {
 				continue
 			}
 
-			fmt.Println("couldn't read from listener:", err.Error())
+			println("couldn't read from listener:", err.Error())
 			continue
 		}
 
@@ -122,7 +121,7 @@ func listener(address string) {
 			listener.SetWriteDeadline(time.Now().Add(UdpWriteNetworkTimeout))
 			listener.WriteToUDP(buffer[:bytes], &to)
 		} else if bytes == SecretLength {
-			fmt.Println(from, "- no existing association, but received a potential secret")
+			println(from, "- no existing association, but received a potential secret")
 
 			secret := string(buffer[:bytes])
 			udpSessionsLock.Lock()
@@ -130,10 +129,10 @@ func listener(address string) {
 			udpSessionsLock.Unlock()
 
 			if exists {
-				fmt.Println(from, "- secret matched pending session")
+				println(from, "- secret matched pending session")
 				to, err := net.ResolveUDPAddr("udp", session.Destination)
 				if err != nil {
-					fmt.Println("couldn't parse udp destination address", session.Destination, "-", err.Error())
+					println("couldn't parse udp destination address", session.Destination, "-", err.Error())
 					continue
 				}
 
@@ -149,13 +148,13 @@ func listener(address string) {
 				sessions = append(sessions, LiveSession{fromString, toString, time.Now()})
 				sessionsLock.Unlock()
 
-				fmt.Println(from, "- session authenticated. now relaying packets with", toString)
+				println(from, "- session authenticated. now relaying packets with", toString)
 			} else {
-				fmt.Println(from, "- potential secret did not match any pending sessions. no active session found for this address")
+				println(from, "- potential secret did not match any pending sessions. no active session found for this address")
 				listener.WriteToUDP(noUdpSession, from)
 			}
 		} else {
-			fmt.Println(from, "- no active session found for this address")
+			println(from, "- no active session found for this address")
 			listener.WriteToUDP(noUdpSession, from)
 		}
 	}
