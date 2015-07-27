@@ -11,8 +11,13 @@ var (
 )
 
 func timeString() string {
-	t := time.Now().In(location).Format(layout)
-	return "[" + t + "]"
+	t := time.Now()
+
+	if location != nil {
+		t = t.In(location)
+	}
+
+	return "[" + t.Format(layout) + "]"
 }
 
 func printf(format string, items ...interface{}) {
