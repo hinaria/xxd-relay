@@ -2,13 +2,16 @@ package relay
 
 import "sync"
 
-type SessionDescription struct {
+type PendingSessionDescription struct {
 	Secret      string
 	Destination string
 }
 
-var udpSessions = make(map[string]SessionDescription)
-var tcpSessions = make(map[string]SessionDescription)
+type PendingSessionGroups struct {
+	Udp     map[string]PendingSessionDescription
+	Tcp     map[string]PendingSessionDescription
+	UdpLock sync.Mutex
+	TcpLock sync.Mutex
+}
 
-var udpSessionsLock = sync.Mutex{}
-var tcpSessionsLock = sync.Mutex{}
+var pendingSessions = PendingSessionGroups{make(map[string]PendingSessionDescription), make(map[string]PendingSessionDescription), sync.Mutex{}, sync.Mutex{}}

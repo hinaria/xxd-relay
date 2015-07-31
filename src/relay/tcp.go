@@ -61,7 +61,7 @@ func tcp(client net.Conn) {
 	go tcpStreamCopy(server, client)
 }
 
-func tcpGrabSession(connection net.Conn) *SessionDescription {
+func tcpGrabSession(connection net.Conn) *PendingSessionDescription {
 	buffer := make([]byte, SecretLength)
 	remote := connection.RemoteAddr()
 
@@ -79,12 +79,12 @@ func tcpGrabSession(connection net.Conn) *SessionDescription {
 
 	key := string(buffer)
 
-	tcpSessionsLock.Lock()
-	session, exists := tcpSessions[key]
+	pendingSessions.TcpLock.Lock()
+	session, exists := pendingSessions.Tcp[key]
 	if exists {
-		delete(tcpSessions, key)
+		delete(pendingSessions.Tcp, key)
 	}
-	tcpSessionsLock.Unlock()
+	pendingSessions.TcpLock.Unlock()
 
 	if exists {
 		return &session

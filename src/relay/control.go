@@ -32,12 +32,12 @@ func HttpControlListen(address string) {
 	http.ListenAndServe(address, nil)
 }
 
-func getSessionsForProtocol(protocol int) (map[string]SessionDescription, *sync.Mutex) {
+func getSessionsForProtocol(protocol int) (map[string]PendingSessionDescription, *sync.Mutex) {
 	switch protocol {
 	case ProtocolUdp:
-		return udpSessions, &udpSessionsLock
+		return pendingSessions.Udp, &pendingSessions.UdpLock
 	case ProtocolTcp:
-		return tcpSessions, &tcpSessionsLock
+		return pendingSessions.Tcp, &pendingSessions.TcpLock
 	default:
 		return nil, nil
 	}
@@ -89,7 +89,7 @@ func handle(writer http.ResponseWriter, request *http.Request) {
 	switch params.Action {
 	case ActionAdd:
 		println("adding route to", params.Destination, "with secret", secret)
-		sessions[secret] = SessionDescription{secret, addr.String()}
+		sessions[secret] = PendingSessionDescription{secret, addr.String()}
 	case ActionRemove:
 		println("removing route with the secret", secret)
 		delete(sessions, secret)

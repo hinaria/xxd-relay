@@ -7,8 +7,10 @@ import (
 )
 
 type LiveSession struct {
-	Destination1 string
-	Destination2 string
+	ClientString string
+	Client       *net.UDPAddr
+	Peer         *net.UDPAddr
+	PeerSocket   *net.UDPConn
 	Created      time.Time
 }
 
@@ -25,23 +27,23 @@ var (
 	UdpAssociationDuration = time.Duration(2 * time.Hour)
 
 	// ip_address string <-> ip_address UDPAddr
-	associations = make(map[string]net.UDPAddr, InitialSessionCapacity)
+	associations     = make(map[string]LiveSession, InitialSessionCapacity)
+	associationsLock = sync.Mutex{}
 
 	// the sessions list that our listener adds to
-	sessions = make([]LiveSession, 0, InitialSessionQueueCapacity)
+	sessionListByTime     = make([]LiveSession, 0, InitialSessionQueueCapacity)
+	sessionListByTimeLock = sync.Mutex{}
+
 	// we move sessions from `sessions` into here, and then walk through this
 	// list to limit the amount of time we spend locking `sessions`
-	_sessions = make([]LiveSession, 0, InitialSessionCapacity)
-
-	associationsLock = sync.Mutex{}
-	sessionsLock     = sync.Mutex{}
+	_sessionListByTime = make([]LiveSession, 0, InitialSessionCapacity)
 
 	noUdpSession = []byte{125}
 )
 
 func UdpListen(address string) {
 	go invalidator()
-	listener(address)
+	clientListen(address)
 }
 
 func invalidator() {
@@ -55,22 +57,26 @@ func invalidator() {
 		for i := 0; i < TrimDurationMinutes; i++ {
 			time.Sleep(time.Minute)
 
-			sessionsLock.Lock()
-			if len(sessions) > 0 {
-				println("moving", len(sessions), "to the invalidation queue")
-				_sessions = append(_sessions, sessions...)
-				sessions = sessions[:0]
+			sessionListByTimeLock.Lock()
+			if len(sessionListByTime) > 0 {
+				println("moving", len(sessionListByTime), "to the invalidation queue")
+				_sessionListByTime = append(_sessionListByTime, sessionListByTime...)
+				sessionListByTime = sessionListByTime[:0]
 			}
-			sessionsLock.Unlock()
+			sessionListByTimeLock.Unlock()
 		}
 
 		// `TrimDurationMinutes` have passed. trim sessions slowly.
 
-		previous := len(_sessions)
+		previous := len(_sessionListByTime)
 		count := 0
-		for i, session := range _sessions {
-			if time.Since(session.Created) < UdpAssociationDuration {
-				_sessions[count] = session
+		for i, session := range _sessionListByTime {
+			if time.Since(session.Created) >= UdpAssociationDuration {
+				associationsLock.Lock()
+				delete(associations, session.ClientString)
+				associationsLock.Unlock()
+			} else {
+				_sessionListByTime[count] = session
 				count++
 			}
 
@@ -80,16 +86,18 @@ func invalidator() {
 		}
 
 		println("trimmed udp session list. we now have", count, "sessions. previously", previous)
-		_sessions = _sessions[:count]
+		_sessionListByTime = _sessionListByTime[:count]
 	}
 }
 
-func listener(address string) {
+func clientListen(address string) {
+	buffer := make([]byte, BufferLength)
+
 	println("udp listening on:", address)
 
 	listenAddress, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
-		println("couldn't parse address", address, "-", err.Error())
+		println("couldn't parse address:", address, "-", err.Error())
 	}
 
 	listener, err := net.ListenUDP("udp", listenAddress)
@@ -98,57 +106,64 @@ func listener(address string) {
 		return
 	}
 
-	defer listener.Close()
-
-	buffer := make([]byte, BufferLength)
 	for {
 		listener.SetReadDeadline(time.Now().Add(UdpReadNetworkTimeout))
 		bytes, from, err := listener.ReadFromUDP(buffer)
+
 		if err != nil {
 			if netError, ok := err.(net.Error); ok && netError.Timeout() {
 				continue
 			}
 
-			println("couldn't read from listener:", err.Error())
+			println("couldn't read from main client listener:", err.Error())
 			continue
 		}
 
+		fromString := from.String()
+
 		associationsLock.Lock()
-		to, hasAssociation := associations[from.String()]
+		session, ok := associations[fromString]
 		associationsLock.Unlock()
 
-		if hasAssociation {
-			listener.SetWriteDeadline(time.Now().Add(UdpWriteNetworkTimeout))
-			listener.WriteToUDP(buffer[:bytes], &to)
+		if ok {
+			socket := session.PeerSocket
+			socket.SetWriteDeadline(time.Now().Add(UdpWriteNetworkTimeout))
+			socket.WriteToUDP(buffer[:bytes], session.Peer)
 		} else if bytes == SecretLength {
 			println(from, "- no existing association, but received a potential secret")
 
 			secret := string(buffer[:bytes])
-			udpSessionsLock.Lock()
-			session, exists := udpSessions[secret]
-			udpSessionsLock.Unlock()
+
+			pendingSessions.UdpLock.Lock()
+			pending, exists := pendingSessions.Udp[secret]
+			pendingSessions.UdpLock.Unlock()
 
 			if exists {
 				println(from, "- secret matched pending session")
-				to, err := net.ResolveUDPAddr("udp", session.Destination)
+
+				to, err := net.ResolveUDPAddr("udp", pending.Destination)
 				if err != nil {
-					println("couldn't parse udp destination address", session.Destination, "-", err.Error())
+					println("couldn't parse udp destination address", pending.Destination, "-", err.Error())
 					continue
 				}
 
-				fromString := from.String()
-				toString := to.String()
+				newSocket, err := createUdpSocket()
+				if err != nil {
+					println("couldn't create new socket -", err.Error())
+					continue
+				}
+
+				session := LiveSession{fromString, from, to, newSocket, time.Now()}
 
 				associationsLock.Lock()
-				associations[fromString] = *to
-				associations[toString] = *from
+				associations[session.ClientString] = session
 				associationsLock.Unlock()
 
-				sessionsLock.Lock()
-				sessions = append(sessions, LiveSession{fromString, toString, time.Now()})
-				sessionsLock.Unlock()
+				trackSession(session)
 
-				println(from, "- session authenticated. now relaying packets with", toString)
+				println(from, "- session authenticated. now relaying packets with", to.String())
+
+				go copyServerToClient(session, listener)
 			} else {
 				println(from, "- potential secret did not match any pending sessions. no active session found for this address")
 				listener.WriteToUDP(noUdpSession, from)
@@ -157,5 +172,53 @@ func listener(address string) {
 			println(from, "- no active session found for this address")
 			listener.WriteToUDP(noUdpSession, from)
 		}
+	}
+}
+
+func trackSession(session LiveSession) {
+	sessionListByTimeLock.Lock()
+	sessionListByTime = append(_sessionListByTime, session)
+	sessionListByTimeLock.Unlock()
+}
+
+func createUdpSocket() (*net.UDPConn, error) {
+	address, err := net.ResolveUDPAddr("udp", "0.0.0.0:0")
+	if err != nil {
+		return nil, err
+	}
+
+	socket, err := net.ListenUDP("udp", address)
+	if err != nil {
+		return nil, err
+	}
+
+	return socket, nil
+}
+
+func copyServerToClient(session LiveSession, listener *net.UDPConn) {
+	buffer := make([]byte, BufferLength)
+	server := session.PeerSocket
+	client := listener
+
+	for time.Since(session.Created) < UdpAssociationDuration {
+		server.SetReadDeadline(time.Now().Add(UdpReadNetworkTimeout))
+		bytes, from, err := server.ReadFromUDP(buffer)
+
+		if err != nil {
+			if netError, ok := err.(net.Error); ok && netError.Timeout() {
+				continue
+			}
+
+			println("couldn't read from server socket.", err.Error())
+			continue
+		}
+
+		if from != session.Peer {
+			println("socket received data from non-peer, ignoring.", err.Error())
+			continue
+		}
+
+		client.SetWriteDeadline(time.Now().Add(UdpWriteNetworkTimeout))
+		client.WriteToUDP(buffer[:bytes], session.Client)
 	}
 }
