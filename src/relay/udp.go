@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"bytes"
 	"net"
 	"sync"
 	"time"
@@ -153,7 +154,12 @@ func clientListen(address string) {
 					continue
 				}
 
-				session := LiveSession{fromString, from, to, newSocket, time.Now()}
+				session := LiveSession{
+					ClientString: fromString,
+					Client:       from,
+					Peer:         to,
+					PeerSocket:   newSocket,
+					Created:      time.Now()}
 
 				associationsLock.Lock()
 				associations[session.ClientString] = session
@@ -202,7 +208,7 @@ func copyServerToClient(session LiveSession, listener *net.UDPConn) {
 
 	for time.Since(session.Created) < UdpAssociationDuration {
 		server.SetReadDeadline(time.Now().Add(UdpReadNetworkTimeout))
-		bytes, from, err := server.ReadFromUDP(buffer)
+		data, from, err := server.ReadFromUDP(buffer)
 
 		if err != nil {
 			if netError, ok := err.(net.Error); ok && netError.Timeout() {
@@ -213,12 +219,12 @@ func copyServerToClient(session LiveSession, listener *net.UDPConn) {
 			continue
 		}
 
-		if from != session.Peer {
-			println("socket received data from non-peer, ignoring.", err.Error())
+		if !bytes.Equal([]byte(from.IP), []byte(session.Peer.IP)) || from.Port != session.Peer.Port {
+			println("socket received data from non-peer, ignoring. received from", from, "but only allowing from", session.Peer)
 			continue
 		}
 
 		client.SetWriteDeadline(time.Now().Add(UdpWriteNetworkTimeout))
-		client.WriteToUDP(buffer[:bytes], session.Client)
+		client.WriteToUDP(buffer[:data], session.Client)
 	}
 }
