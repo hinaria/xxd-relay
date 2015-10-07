@@ -63,7 +63,7 @@ func tcp(client net.Conn) {
 
 func tcpGrabSession(connection net.Conn) *PendingSessionDescription {
 	buffer := make([]byte, SecretLength)
-	remote := connection.RemoteAddr()
+	// remote := connection.RemoteAddr()
 
 	bytes, err := connection.Read(buffer)
 

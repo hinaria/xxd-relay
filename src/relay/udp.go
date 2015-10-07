@@ -69,7 +69,7 @@ func invalidator() {
 
 		// `TrimDurationMinutes` have passed. trim sessions slowly.
 
-		previous := len(_sessionListByTime)
+		// previous := len(_sessionListByTime)
 		count := 0
 		for i, session := range _sessionListByTime {
 			if time.Since(session.Created) >= UdpAssociationDuration {
