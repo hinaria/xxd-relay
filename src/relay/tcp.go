@@ -15,11 +15,11 @@ var (
 )
 
 func TcpListen(address string) {
-	println("tcp listening on:", address)
+	// println("tcp listening on:", address)
 
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		println("couldn't listen on tcp:", err.Error())
+		// println("couldn't listen on tcp:", err.Error())
 		return
 	}
 
@@ -28,7 +28,7 @@ func TcpListen(address string) {
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
-			println("couldn't accept incoming tcp connection:", err.Error())
+			// println("couldn't accept incoming tcp connection:", err.Error())
 			return
 		}
 
@@ -41,21 +41,21 @@ func tcp(client net.Conn) {
 
 	session := tcpGrabSession(client)
 	if session == nil {
-		println(remote, "- client presented invalid secret")
+		// println(remote, "- client presented invalid secret")
 		client.Close()
 		return
 	}
 
-	println(remote, "- authenticated. relaying to", session.Destination)
+	// println(remote, "- authenticated. relaying to", session.Destination)
 
 	server, err := net.Dial("tcp", session.Destination)
 	if err != nil {
-		println(remote, "- couldn't connect to remote server:", err.Error())
+		// println(remote, "- couldn't connect to remote server:", err.Error())
 		client.Close()
 		return
 	}
 
-	println(remote, "- connected to both parties. beginning relay.")
+	// println(remote, "- connected to both parties. beginning relay.")
 
 	go tcpStreamCopy(client, server)
 	go tcpStreamCopy(server, client)
@@ -68,7 +68,7 @@ func tcpGrabSession(connection net.Conn) *PendingSessionDescription {
 	bytes, err := connection.Read(buffer)
 
 	if err != nil {
-		println(remote, "- couldn't read secret:", err.Error())
+		// println(remote, "- couldn't read secret:", err.Error())
 		return nil
 	}
 
@@ -104,7 +104,7 @@ func tcpStreamCopy(from net.Conn, to net.Conn) {
 
 		total, err := from.Read(buffer)
 		if err != nil {
-			println(from.RemoteAddr(), "<->", to.RemoteAddr(), "- tcp stream read failed:", err.Error())
+			// println(from.RemoteAddr(), "<->", to.RemoteAddr(), "- tcp stream read failed:", err.Error())
 			return
 		}
 
@@ -114,7 +114,7 @@ func tcpStreamCopy(from net.Conn, to net.Conn) {
 
 			bytes, err := to.Write(buffer[written:total])
 			if err != nil {
-				println(to.RemoteAddr(), "<->", from.RemoteAddr(), "- tcp stream write failed:", err.Error())
+				// println(to.RemoteAddr(), "<->", from.RemoteAddr(), "- tcp stream write failed:", err.Error())
 				return
 			}
 

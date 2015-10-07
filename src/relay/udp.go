@@ -50,7 +50,7 @@ func UdpListen(address string) {
 func invalidator() {
 	const TrimDurationMinutes = 10
 
-	println("beginning udp route invaldation loop")
+	// println("beginning udp route invaldation loop")
 
 	for {
 		// wait until `TrimDurationMinutes` before trimming sessions, but
@@ -60,7 +60,7 @@ func invalidator() {
 
 			sessionListByTimeLock.Lock()
 			if len(sessionListByTime) > 0 {
-				println("moving", len(sessionListByTime), "to the invalidation queue")
+				// println("moving", len(sessionListByTime), "to the invalidation queue")
 				_sessionListByTime = append(_sessionListByTime, sessionListByTime...)
 				sessionListByTime = sessionListByTime[:0]
 			}
@@ -86,7 +86,7 @@ func invalidator() {
 			}
 		}
 
-		println("trimmed udp session list. we now have", count, "sessions. previously", previous)
+		// println("trimmed udp session list. we now have", count, "sessions. previously", previous)
 		_sessionListByTime = _sessionListByTime[:count]
 	}
 }
@@ -94,16 +94,16 @@ func invalidator() {
 func clientListen(address string) {
 	buffer := make([]byte, BufferLength)
 
-	println("udp listening on:", address)
+	// println("udp listening on:", address)
 
 	listenAddress, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
-		println("couldn't parse address:", address, "-", err.Error())
+		// println("couldn't parse address:", address, "-", err.Error())
 	}
 
 	listener, err := net.ListenUDP("udp", listenAddress)
 	if err != nil {
-		println("couldn't listen on udp:", err.Error())
+		// println("couldn't listen on udp:", err.Error())
 		return
 	}
 
@@ -116,7 +116,7 @@ func clientListen(address string) {
 				continue
 			}
 
-			println("couldn't read from main client listener:", err.Error())
+			// println("couldn't read from main client listener:", err.Error())
 			continue
 		}
 
@@ -131,7 +131,7 @@ func clientListen(address string) {
 			socket.SetWriteDeadline(time.Now().Add(UdpWriteNetworkTimeout))
 			socket.WriteToUDP(buffer[:bytes], session.Peer)
 		} else if bytes == SecretLength {
-			println(from, "- no existing association, but received a potential secret")
+			// println(from, "- no existing association, but received a potential secret")
 
 			secret := string(buffer[:bytes])
 
@@ -140,17 +140,17 @@ func clientListen(address string) {
 			pendingSessions.UdpLock.Unlock()
 
 			if exists {
-				println(from, "- secret matched pending session")
+				// println(from, "- secret matched pending session")
 
 				to, err := net.ResolveUDPAddr("udp", pending.Destination)
 				if err != nil {
-					println("couldn't parse udp destination address", pending.Destination, "-", err.Error())
+					// println("couldn't parse udp destination address", pending.Destination, "-", err.Error())
 					continue
 				}
 
 				newSocket, err := createUdpSocket()
 				if err != nil {
-					println("couldn't create new socket -", err.Error())
+					// println("couldn't create new socket -", err.Error())
 					continue
 				}
 
@@ -167,15 +167,15 @@ func clientListen(address string) {
 
 				trackSession(session)
 
-				println(from, "- session authenticated. now relaying packets with", to.String())
+				// println(from, "- session authenticated. now relaying packets with", to.String())
 
 				go copyServerToClient(session, listener)
 			} else {
-				println(from, "- potential secret did not match any pending sessions. no active session found for this address")
+				// println(from, "- potential secret did not match any pending sessions. no active session found for this address")
 				listener.WriteToUDP(noUdpSession, from)
 			}
 		} else {
-			println(from, "- no active session found for this address")
+			// println(from, "- no active session found for this address")
 			listener.WriteToUDP(noUdpSession, from)
 		}
 	}
@@ -215,12 +215,12 @@ func copyServerToClient(session LiveSession, listener *net.UDPConn) {
 				continue
 			}
 
-			println("couldn't read from server socket.", err.Error())
+			// println("couldn't read from server socket.", err.Error())
 			continue
 		}
 
 		if !bytes.Equal([]byte(from.IP), []byte(session.Peer.IP)) || from.Port != session.Peer.Port {
-			println("socket received data from non-peer, ignoring. received from", from, "but only allowing from", session.Peer)
+			// println("socket received data from non-peer, ignoring. received from", from, "but only allowing from", session.Peer)
 			continue
 		}
 
